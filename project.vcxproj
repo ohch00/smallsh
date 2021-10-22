@@ -54,6 +54,7 @@
     <RemoteBuildOutputs>$(ProjectName)</RemoteBuildOutputs>
   </PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="main - local.c" />
     <ClCompile Include="Z:\vsprojects\Assignment3\main.c" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

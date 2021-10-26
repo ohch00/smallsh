@@ -11,77 +11,200 @@ Project: Assignment 3
 #include <unistd.h>
 #include <stdbool.h>
 
+// struct for processing user input
+struct user_input
+{
+	char* command;
+	char* args[512][500];
+	char* input_file;
+	char* output_file;
+	char* ampersand;
+	struct user_input* next;
+};
+
+struct user_input* createInput(char* input) {
+	struct user_input* currInput = malloc(sizeof(struct user_input));
+
+	char* saveptr;
+
+	// First token is command
+	char* token = strtok_r(input, " ", &saveptr);
+	currInput->command = calloc(strlen(token) + 1, sizeof(char));
+	strcpy(currInput->command, token);
+
+	char args_array[512][500];
+	int counter = 0;
+	int conversion;
+	char ampersand = '&';
+	char input_symbol = '<';
+	char output_symbol = '>';
+	bool symbol = false;
+
+	// put arguments into list
+	while (token != NULL && !symbol) {
+		conversion = saveptr[0];
+		token = strtok_r(NULL, " ", &saveptr);
+
+		// if input or output symbol is encountered, arguments have ended
+		if (conversion == input_symbol || conversion == output_symbol) {
+			symbol = true;
+			break;
+		}
+
+		// if & symbol is encountered and next token is NULL, arguments have ended
+		if (conversion == ampersand || token == NULL) {
+			symbol = true;
+			break;
+		}
+
+		strcpy(args_array[counter], token);
+		counter = counter + 1;
+
+		//currInput->args = calloc(strlen(token) + 1, sizeof(char));
+
+	}
+
+	strcpy(currInput->args, args_array);
+
+	while (token != NULL) {
+		conversion = saveptr[0];
+
+		// Input_file - optional
+		if (conversion == input_symbol) {
+			token = strtok_r(NULL, " ", &saveptr);
+			currInput->input_file = calloc(strlen(token) + 1, sizeof(char));
+			strcpy(currInput->input_file, token);
+		}
+
+		// Output_file - optional
+		else if (conversion == output_symbol) {
+			token = strtok_r(NULL, " ", &saveptr);
+			currInput->output_file = calloc(strlen(token) + 1, sizeof(char));
+			strcpy(currInput->output_file, token);
+		}
+		// Ampersand - optional
+		else if (conversion == ampersand && token == NULL) {
+			token = strtok_r(NULL, " ", &saveptr);
+			currInput->ampersand = calloc(strlen(token) + 1, sizeof(char));
+			strcpy(currInput->ampersand, token);
+		}
+	}
+
+	currInput->next = NULL;
+
+	return currInput;
+
+}
+
+
 // Process user input
-void process_user_input(char* user_input) {
-	char args[512][2049];
+struct user_input* process_user_input(char* user_input) {
 	char copy_user_input[2049];
-	char var_expansion = "$$";
-	char* var_found;
-	char* expanded_var;
 	strcpy(copy_user_input, user_input);
 
 	// remove /n character at input
 	copy_user_input[strlen(copy_user_input) - 1] = 0;
 
-	// check for variable expansion ($$)
-	var_found = strstr(copy_user_input, var_expansion);
-	if (var_found) {
-		variable_expansion(copy_user_input, expanded_var);
+	// create input struct
+	struct user_input* head = NULL;
+	struct user_input* tail = NULL;
+
+	struct user_input* newNode = createInput(copy_user_input);
+	if (head == NULL) {
+		head = newNode;
+		tail = newNode;
+	}
+	else {
+		tail->next = newNode;
+		tail = newNode;
 	}
 
-	char* token = strtok(copy_user_input, " ");
-	char* saveptr = calloc(strlen(token) + 1, sizeof(char));
+	return head;
 
-	int counter = 0;
-	bool special_symbol = false;
-	char ampersand = '&';
-	bool ampersand_present = false;
-	char lesser_than = '<';
-	char greater_than = '>';
-	int conversion;
-
-	while (token != NULL && !special_symbol) {
-		strcpy(saveptr, token);
-		conversion = saveptr[0];
-		if (conversion == lesser_than || conversion == greater_than) {
-			// @ need to check if file name is present after input/output
-			special_symbol = true;
-			break;
-		}
-
-		token = strtok(NULL, " ");
-		if (conversion == ampersand && token == NULL) {
-			ampersand_present = true;
-		}
-
-		strcpy(args[counter], saveptr);
-		counter = counter + 1;
-	}
-
-	free(saveptr);
-
-	if (special_symbol) {
-
-	}
 }
 
-// Signal Handling
-
-// Input Parser
 
 // $$ Expansion
 void variable_expansion(char* user_input, char* expanded_var) {
-	char copy_user_input[2049];
+	char* copy_user_input = calloc(strlen(user_input) + 1, sizeof(char));
 	strcpy(copy_user_input, user_input);
+
+	copy_user_input[strlen(copy_user_input) - 1] = 0;
+
+	// process pid - count digits in pid
+	int get_pid = getpid();
+	char digits[10];
+	sprintf(digits, "%d", get_pid);
+	int length;
+	length = strlen(digits);
+
+	// calculate size of char needed for expanded_var
+	int size_expanded_var = (length * strlen(copy_user_input));
+	char hold_expanded_var[size_expanded_var];
+	hold_expanded_var[0] = '\0';
+
+	// https://www.linuxquestions.org/questions/programming-9/replace-a-substring-with-another-string-in-c-170076/
+	bool replacing = true;
+	char* i;
+
+	while (replacing) {
+		i = strstr(copy_user_input, "$$");
+		if (i) {
+			strncpy(hold_expanded_var, copy_user_input, i - copy_user_input);
+			hold_expanded_var[i - copy_user_input] = '\0';
+			sprintf(hold_expanded_var + (i - copy_user_input), "%s%s", digits, i + strlen("$$"));
+			strcpy(copy_user_input, hold_expanded_var);
+		}
+		else {
+			replacing = false;
+			break;
+		}
+	}
+
+	strcpy(expanded_var, hold_expanded_var);
 
 }
 
+
 // Built-in commands
+void cd(char* filename) {
 
-// Exec
+}
 
-// Forking
+void exit() {
 
+}
+
+void status() {
+
+}
+
+
+void direction(struct user_input* input, bool* continue_sh) {
+	char cmd;
+	strcpy(cmd, input->command);
+
+	char* filename;
+
+	if (strcmp(cmd, "cd") == 0) {
+
+		cd(filename);
+	}
+
+	else if (strcmp(cmd, "exit") == 0) {
+		exit();
+		*continue_sh = true;
+	}
+
+	else if (strcmp(cmd, "status") == 0) {
+		status();
+	}
+
+	else {
+
+	}
+
+}
 
 
 int main() {
@@ -89,8 +212,14 @@ int main() {
 	char user_input[2049];
 	char pound_sign = '#';
 
-	printf("$ smallsh");
+	//
+	struct user_input* input = process_user_input(user_input);
 
+	// Variable expansion
+	char expanded_var;
+
+
+	printf("$ smallsh");
 	// Prompt
 	while (continue_sh) {
 		printf("\n: ");
@@ -100,7 +229,9 @@ int main() {
 
 			// if fgets is not a comment (pound sign)
 			if (user_input[0] != pound_sign) {
-				process_user_input(user_input);
+				variable_expansion(user_input, expanded_var);
+				input = process_user_input(user_input);
+				direction(input, continue_sh);
 			}
 		}
 		// if fgets is null

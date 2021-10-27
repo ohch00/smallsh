@@ -15,7 +15,7 @@ Project: Assignment 3
 struct user_input
 {
 	char* command;
-	char* args[512];
+	char* args[514];
 	char* input_file;
 	char* output_file;
 	char* ampersand;
@@ -39,6 +39,9 @@ struct user_input* createInput(char* input) {
 	char input_symbol = '<';
 	char output_symbol = '>';
 	bool symbol = false;
+
+	currInput->args[counter] = token;
+	counter += 1;
 
 	// put arguments into list
 	while (token != NULL && !symbol) {
@@ -167,18 +170,52 @@ void variable_expansion(char* user_input, char* expanded_var) {
 
 }
 
+struct background_process
+{
+	int pid;
+	struct background_process* next;
+};
+
+struct background_process* add_process(pid_t spawnPid) {
+	struct background_process* currBack = malloc(sizeof(struct background_process));
+	currBack->pid = spawnPid;
+	currBack->next = NULL;
+	return currBack;
+}
+
+
 
 void direction(struct user_input* input, bool* continue_sh) {
+	struct user_input* input_2 = input;
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
-	strcpy(cmd, input->command);
+	strcpy(cmd, input_2->command);
 
-	char args_array[512][500];
-	strcpy(args_array, input->args);
-	char* filename = args_array[0];
+	char dest_array[512][200];
+
+	int arg_counter = 0;
+
 	char* home;
+	char* filename;
+	bool has_arg = false;
+	if (input_2->args[1]) {
+		filename = calloc(strlen(input->args[1]) + 1, sizeof(char));
+		strcpy(filename, input_2->args[1]);
+		has_arg = true;
+
+		while (input_2->args[arg_counter] != NULL) {
+			strcpy(dest_array[arg_counter], input->args[arg_counter]);
+			arg_counter = arg_counter + 1;
+		}
+
+	}
+
+	bool background = false;
+	if (input_2->ampersand) {
+		background = true;
+	}
 
 	if (strcmp(cmd, "cd") == 0) {
-		if (filename) {
+		if (has_arg) {
 			chdir(filename);
 		}
 		else {
@@ -195,10 +232,113 @@ void direction(struct user_input* input, bool* continue_sh) {
 
 	}
 
-	else {
+	else if (background) {
+		background_commands(input_2);
 
 	}
 
+	else {
+		foreground_commands(input_2->args);
+	}
+
+}
+
+void foreground_commands(char** args) {
+	// https://www.youtube.com/watch?v=1R9h-H2UnLs
+	pid_t spawnPid = -5;
+	int childExitStatus = -5;
+	int fork_counter = 0;
+
+	spawnPid = fork();
+	int pid = getpid();
+	fork_counter = fork_counter + 1;
+	if (fork_counter > 25) {
+		abort();
+	}
+	switch (spawnPid) {
+	case -1: {
+		perror("Error Occurred.\n");
+		exit(1);
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+
+		break;
+	}
+	case 0: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+		execvp(args[0], args);
+		break;
+	}
+	default: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
+		break;
+	}
+	}
+}
+
+void background_commands(char** args) {
+
+	// https://www.youtube.com/watch?v=1R9h-H2UnLs
+	pid_t spawnPid = -5;
+	int childExitStatus = -5;
+	int fork_counter = 0;
+
+	spawnPid = fork();
+	fork_counter = fork_counter + 1;
+
+	struct background_process* head = NULL;
+	struct background_process* tail = NULL;
+	struct background_process* newNode = add_process(spawnPid);
+	if (head == NULL) {
+		head = newNode;
+		tail = newNode;
+	}
+	else {
+		tail->next = newNode;
+		tail = newNode;
+	}
+
+
+	if (fork_counter > 25) {
+		abort();
+	}
+	switch (spawnPid) {
+	case -1: {
+		perror("Error Occurred.\n");
+		exit(1);
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+
+		break;
+	}
+	case 0: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+		execvp(args[0], args);
+		break;
+	}
+	default: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
+		break;
+	}
+	}
 }
 
 
@@ -214,10 +354,10 @@ int main() {
 	char* expanded_var[2049];
 
 
-	printf("$ smallsh");
+	printf("$ smallsh\n");
 	// Prompt
 	while (continue_sh) {
-		printf("\n: ");
+		printf(": ");
 		fflush(stdout);
 		// if fgets is not null
 		if (strlen(fgets(user_input, 2049, stdin)) > 1) {
@@ -234,4 +374,5 @@ int main() {
 			continue;
 		}
 	}
+	return 0;
 }

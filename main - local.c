@@ -190,8 +190,10 @@ void direction(struct user_input* input, bool* continue_sh) {
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input_2->command);
 
-	char dest_array[512][200];
+	bool child_processed = false;
+	int exit_status = -5;
 
+	char dest_array[512][200];
 	int arg_counter = 0;
 
 	char* home;
@@ -226,10 +228,17 @@ void direction(struct user_input* input, bool* continue_sh) {
 
 	else if (strcmp(cmd, "exit") == 0) {
 		*continue_sh = true;
+		exit(0);
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
-
+		if (child_processed) {
+			printf("exit value %d", exit_status);
+		}
+		else {
+			printf("exit value 0");
+			fflush(stdout);
+		}
 	}
 
 	else if (background) {
@@ -238,20 +247,26 @@ void direction(struct user_input* input, bool* continue_sh) {
 	}
 
 	else {
-		foreground_commands(input_2->args);
+		foreground_commands(input_2->args, &exit_status);
+		child_processed = true;
 	}
 
 }
 
-void foreground_commands(char** args) {
+void foreground_commands(char** args, int exit_status) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
+	int child_status = -5;
+	int child_signal = -5;
+
 	int fork_counter = 0;
 
 	spawnPid = fork();
 	int pid = getpid();
+
 	fork_counter = fork_counter + 1;
+
 	if (fork_counter > 25) {
 		abort();
 	}
@@ -280,6 +295,18 @@ void foreground_commands(char** args) {
 			abort();
 		}
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
+		if (WIFEXITED(childExitStatus)) {
+			child_status = WEXITSTATUS(childExitStatus);
+		}
+		else {
+			child_signal = WTERMSIG(childExitStatus);
+		}
+		if (child_status != -5) {
+			exit_status = child_status;
+		}
+		else if (child_signal != -5) {
+			exit_status = child_signal;
+		}
 		break;
 	}
 	}
@@ -311,6 +338,9 @@ void background_commands(char** args) {
 	if (fork_counter > 25) {
 		abort();
 	}
+
+	int child_status = -5;
+	int child_signal = -5;
 	switch (spawnPid) {
 	case -1: {
 		perror("Error Occurred.\n");
@@ -319,7 +349,6 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
-
 		break;
 	}
 	case 0: {
@@ -335,7 +364,13 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
-		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
+		spawnPid = waitpid(spawnPid, &childExitStatus, 0);
+		if (WIFEXITED(childExitStatus)) {
+			child_status = WEXITSTATUS(childExitStatus);
+		}
+		else {
+			child_signal = WTERMSIG(childExitStatus);
+		}
 		break;
 	}
 	}
@@ -357,7 +392,7 @@ int main() {
 	printf("$ smallsh\n");
 	// Prompt
 	while (continue_sh) {
-		printf(": ");
+		printf("\n: ");
 		fflush(stdout);
 		// if fgets is not null
 		if (strlen(fgets(user_input, 2049, stdin)) > 1) {

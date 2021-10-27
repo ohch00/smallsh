@@ -15,7 +15,7 @@ Project: Assignment 3
 struct user_input
 {
 	char* command;
-	char* args[512][500];
+	char* args[512];
 	char* input_file;
 	char* output_file;
 	char* ampersand;
@@ -32,7 +32,7 @@ struct user_input* createInput(char* input) {
 	currInput->command = calloc(strlen(token) + 1, sizeof(char));
 	strcpy(currInput->command, token);
 
-	char args_array[512][500];
+	//char args_array[512][500];
 	int counter = 0;
 	int conversion;
 	char ampersand = '&';
@@ -57,14 +57,11 @@ struct user_input* createInput(char* input) {
 			break;
 		}
 
-		strcpy(args_array[counter], token);
-		counter = counter + 1;
-
-		//currInput->args = calloc(strlen(token) + 1, sizeof(char));
+		currInput->args[counter] = token;
+		counter += 1;
 
 	}
 
-	strcpy(currInput->args, args_array);
 
 	while (token != NULL) {
 		conversion = saveptr[0];
@@ -128,6 +125,7 @@ struct user_input* process_user_input(char* user_input) {
 void variable_expansion(char* user_input, char* expanded_var) {
 	char* copy_user_input = calloc(strlen(user_input) + 1, sizeof(char));
 	strcpy(copy_user_input, user_input);
+	char var[] = "$$";
 
 	copy_user_input[strlen(copy_user_input) - 1] = 0;
 
@@ -139,7 +137,7 @@ void variable_expansion(char* user_input, char* expanded_var) {
 	length = strlen(digits);
 
 	// calculate size of char needed for expanded_var
-	int size_expanded_var = (length * strlen(copy_user_input));
+	int size_expanded_var = (length * strlen(copy_user_input) + 1);
 	char hold_expanded_var[size_expanded_var];
 	hold_expanded_var[0] = '\0';
 
@@ -147,57 +145,54 @@ void variable_expansion(char* user_input, char* expanded_var) {
 	bool replacing = true;
 	char* i;
 
-	while (replacing) {
-		i = strstr(copy_user_input, "$$");
-		if (i) {
-			strncpy(hold_expanded_var, copy_user_input, i - copy_user_input);
-			hold_expanded_var[i - copy_user_input] = '\0';
-			sprintf(hold_expanded_var + (i - copy_user_input), "%s%s", digits, i + strlen("$$"));
-			strcpy(copy_user_input, hold_expanded_var);
+	i = strstr(copy_user_input, var);
+
+	if (i) {
+		while (replacing) {
+			i = strstr(copy_user_input, var);
+			if (i) {
+				strncpy(hold_expanded_var, copy_user_input, i - copy_user_input);
+				hold_expanded_var[i - copy_user_input] = '\0';
+				sprintf(hold_expanded_var + (i - copy_user_input), "%s%s", digits, i + strlen(var));
+				strcpy(copy_user_input, hold_expanded_var);
+			}
+			else {
+				replacing = false;
+				break;
+			}
 		}
-		else {
-			replacing = false;
-			break;
-		}
+		strcpy(expanded_var, hold_expanded_var);
 	}
 
-	strcpy(expanded_var, hold_expanded_var);
-
-}
-
-
-// Built-in commands
-void cd(char* filename) {
-
-}
-
-void exit() {
-
-}
-
-void status() {
 
 }
 
 
 void direction(struct user_input* input, bool* continue_sh) {
-	char cmd;
+	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input->command);
 
-	char* filename;
+	char args_array[512][500];
+	strcpy(args_array, input->args);
+	char* filename = args_array[0];
+	char* home;
 
 	if (strcmp(cmd, "cd") == 0) {
-
-		cd(filename);
+		if (filename) {
+			chdir(filename);
+		}
+		else {
+			home = getenv("HOME");
+			chdir(home);
+		}
 	}
 
 	else if (strcmp(cmd, "exit") == 0) {
-		exit();
 		*continue_sh = true;
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
-		status();
+
 	}
 
 	else {
@@ -213,10 +208,10 @@ int main() {
 	char pound_sign = '#';
 
 	//
-	struct user_input* input = process_user_input(user_input);
+	struct user_input* input;
 
 	// Variable expansion
-	char expanded_var;
+	char* expanded_var[2049];
 
 
 	printf("$ smallsh");
@@ -231,7 +226,7 @@ int main() {
 			if (user_input[0] != pound_sign) {
 				variable_expansion(user_input, expanded_var);
 				input = process_user_input(user_input);
-				direction(input, continue_sh);
+				direction(input, &continue_sh);
 			}
 		}
 		// if fgets is null

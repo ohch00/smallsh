@@ -185,16 +185,16 @@ struct background_process* add_process(pid_t spawnPid) {
 
 
 
-void direction(struct user_input* input, bool* continue_sh) {
+void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int) {
 	struct user_input* input_2 = input;
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input_2->command);
 
-	bool child_processed = false;
-	int exit_status = -5;
-
 	char dest_array[512][200];
 	int arg_counter = 0;
+
+	bool child_processed = *child_processed_bool;
+	int exit_status = *exit_status_int;
 
 	char* home;
 	char* filename;
@@ -248,12 +248,13 @@ void direction(struct user_input* input, bool* continue_sh) {
 
 	else {
 		foreground_commands(input_2->args, &exit_status);
-		child_processed = true;
+		*child_processed_bool = true;
+		*exit_status_int = exit_status;
 	}
 
 }
 
-void foreground_commands(char** args, int exit_status) {
+void foreground_commands(char** args, int* exit_status) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
@@ -263,8 +264,6 @@ void foreground_commands(char** args, int exit_status) {
 	int fork_counter = 0;
 
 	spawnPid = fork();
-	int pid = getpid();
-
 	fork_counter = fork_counter + 1;
 
 	if (fork_counter > 25) {
@@ -302,7 +301,7 @@ void foreground_commands(char** args, int exit_status) {
 			child_signal = WTERMSIG(childExitStatus);
 		}
 		if (child_status != -5) {
-			exit_status = child_status;
+			*exit_status = child_status;
 		}
 		else if (child_signal != -5) {
 			exit_status = child_signal;
@@ -388,6 +387,9 @@ int main() {
 	// Variable expansion
 	char* expanded_var[2049];
 
+	// Direction
+	bool child_processed = false;
+	int exit_status = -5;
 
 	printf("$ smallsh\n");
 	// Prompt
@@ -401,7 +403,7 @@ int main() {
 			if (user_input[0] != pound_sign) {
 				variable_expansion(user_input, expanded_var);
 				input = process_user_input(user_input);
-				direction(input, &continue_sh);
+				direction(input, &continue_sh, &child_processed, &exit_status);
 			}
 		}
 		// if fgets is null

@@ -18,21 +18,28 @@ struct user_input
 	char* args[514];
 	char* input_file;
 	char* output_file;
-	char* ampersand;
+	bool ampersand;
 	struct user_input* next;
 };
 
 struct user_input* createInput(char* input) {
 	struct user_input* currInput = malloc(sizeof(struct user_input));
 
-	char* saveptr;
+	currInput->ampersand = false;
+
+	// Copy for second pointer
+	char* saveptr_2;
+	char* copy_input = calloc(strlen(input) + 1, sizeof(char));
+	strcpy(copy_input, input);
+	char* token_2 = strtok_r(copy_input, " ", &saveptr_2);
 
 	// First token is command
+	char* saveptr;
 	char* token = strtok_r(input, " ", &saveptr);
 	currInput->command = calloc(strlen(token) + 1, sizeof(char));
 	strcpy(currInput->command, token);
 
-	//char args_array[512][500];
+
 	int counter = 0;
 	int conversion;
 	char ampersand = '&';
@@ -43,10 +50,14 @@ struct user_input* createInput(char* input) {
 	currInput->args[counter] = token;
 	counter += 1;
 
+	//bool next_token_null = false;
+	token_2 = strtok_r(NULL, " ", &saveptr_2);
+
 	// put arguments into list
 	while (token != NULL && !symbol) {
-		conversion = saveptr[0];
 		token = strtok_r(NULL, " ", &saveptr);
+		token_2 = strtok_r(NULL, " ", &saveptr_2);
+		conversion = token[0];
 
 		// if input or output symbol is encountered, arguments have ended
 		if (conversion == input_symbol || conversion == output_symbol) {
@@ -55,8 +66,10 @@ struct user_input* createInput(char* input) {
 		}
 
 		// if & symbol is encountered and next token is NULL, arguments have ended
-		if (conversion == ampersand || token == NULL) {
+		if (conversion == ampersand && token_2 == NULL) {
+			token = strtok_r(NULL, " ", &saveptr);
 			symbol = true;
+			currInput->ampersand = true;
 			break;
 		}
 
@@ -67,11 +80,12 @@ struct user_input* createInput(char* input) {
 
 
 	while (token != NULL) {
-		conversion = saveptr[0];
+		conversion = token[0];
 
 		// Input_file - optional
 		if (conversion == input_symbol) {
 			token = strtok_r(NULL, " ", &saveptr);
+			token_2 = strtok_r(NULL, " ", &saveptr_2);
 			currInput->input_file = calloc(strlen(token) + 1, sizeof(char));
 			strcpy(currInput->input_file, token);
 		}
@@ -79,15 +93,20 @@ struct user_input* createInput(char* input) {
 		// Output_file - optional
 		else if (conversion == output_symbol) {
 			token = strtok_r(NULL, " ", &saveptr);
+			token_2 = strtok_r(NULL, " ", &saveptr_2);
 			currInput->output_file = calloc(strlen(token) + 1, sizeof(char));
 			strcpy(currInput->output_file, token);
 		}
 		// Ampersand - optional
-		else if (conversion == ampersand && token == NULL) {
+		else if (conversion == ampersand && token_2 == NULL) {
 			token = strtok_r(NULL, " ", &saveptr);
-			currInput->ampersand = calloc(strlen(token) + 1, sizeof(char));
-			strcpy(currInput->ampersand, token);
+			currInput->ampersand = true;
 		}
+		else {
+			token = strtok_r(NULL, " ", &saveptr);
+			token_2 = strtok_r(NULL, " ", &saveptr_2);
+		}
+
 	}
 
 	currInput->next = NULL;
@@ -208,13 +227,18 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 			strcpy(dest_array[arg_counter], input->args[arg_counter]);
 			arg_counter = arg_counter + 1;
 		}
-
 	}
 
-	bool background = false;
-	if (input_2->ampersand) {
-		background = true;
+	bool input_bool = false;
+	if (input_2->input_file) {
+		input_bool = true;
 	}
+	bool output_bool = false;
+	if (input_2->output_file) {
+		output_bool = true;
+	}
+
+	bool background = input_2->ampersand;
 
 	if (strcmp(cmd, "cd") == 0) {
 		if (has_arg) {
@@ -227,8 +251,9 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (strcmp(cmd, "exit") == 0) {
-		*continue_sh = true;
-		exit(0);
+		*continue_sh = false;
+		background_check();
+		exit_processes();
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
@@ -242,7 +267,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (background) {
-		background_commands(input_2);
+		background_commands(input_2->args);
 
 	}
 
@@ -286,6 +311,8 @@ void foreground_commands(char** args, int* exit_status) {
 			abort();
 		}
 		execvp(args[0], args);
+		perror("Command not found.");
+		exit(1);
 		break;
 	}
 	default: {
@@ -311,35 +338,29 @@ void foreground_commands(char** args, int* exit_status) {
 	}
 }
 
-void background_commands(char** args) {
+void background_check() {
 
+}
+
+void exit_processes() {
+
+}
+
+void background_commands(char** args) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
+	int child_status = -5;
+	int child_signal = -5;
+
 	int fork_counter = 0;
 
 	spawnPid = fork();
 	fork_counter = fork_counter + 1;
 
-	struct background_process* head = NULL;
-	struct background_process* tail = NULL;
-	struct background_process* newNode = add_process(spawnPid);
-	if (head == NULL) {
-		head = newNode;
-		tail = newNode;
-	}
-	else {
-		tail->next = newNode;
-		tail = newNode;
-	}
-
-
 	if (fork_counter > 25) {
 		abort();
 	}
-
-	int child_status = -5;
-	int child_signal = -5;
 	switch (spawnPid) {
 	case -1: {
 		perror("Error Occurred.\n");
@@ -348,6 +369,7 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
+
 		break;
 	}
 	case 0: {
@@ -356,6 +378,8 @@ void background_commands(char** args) {
 			abort();
 		}
 		execvp(args[0], args);
+		perror("Command not found.");
+		exit(1);
 		break;
 	}
 	default: {
@@ -363,7 +387,7 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
-		spawnPid = waitpid(spawnPid, &childExitStatus, 0);
+		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
 		if (WIFEXITED(childExitStatus)) {
 			child_status = WEXITSTATUS(childExitStatus);
 		}

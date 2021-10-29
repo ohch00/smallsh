@@ -10,6 +10,7 @@ Project: Assignment 3
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <signal.h>
 
 // struct for processing user input
 struct user_input
@@ -56,8 +57,11 @@ struct user_input* createInput(char* input) {
 	// put arguments into list
 	while (token != NULL && !symbol) {
 		token = strtok_r(NULL, " ", &saveptr);
+		if (token != NULL) {
+			conversion = token[0];
+		}
 		token_2 = strtok_r(NULL, " ", &saveptr_2);
-		conversion = token[0];
+
 
 		// if input or output symbol is encountered, arguments have ended
 		if (conversion == input_symbol || conversion == output_symbol) {
@@ -80,7 +84,9 @@ struct user_input* createInput(char* input) {
 
 
 	while (token != NULL) {
-		conversion = token[0];
+		if (token != NULL) {
+			conversion = token[0];
+		}
 
 		// Input_file - optional
 		if (conversion == input_symbol) {
@@ -195,16 +201,26 @@ struct background_process
 	struct background_process* next;
 };
 
-struct background_process* add_process(pid_t spawnPid) {
-	struct background_process* currBack = malloc(sizeof(struct background_process));
-	currBack->pid = spawnPid;
-	currBack->next = NULL;
-	return currBack;
+struct background_process* add_process(pid_t spawnPid, struct background_process** head) {
+	// adapted from https://www.geeksforgeeks.org/linked-list-set-2-inserting-a-node/
+	struct background_process* newNode = malloc(sizeof(struct background_process));
+	struct background_process* last = *head;
+
+	newNode->pid = spawnPid;
+	newNode->next = NULL;
+	if (*head == NULL) {
+		*head = newNode;
+		return;
+	}
+	while (last->next != NULL) {
+		last = last->next;
+	}
+	last->next = newNode;
+	return;
 }
 
 
-
-void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int) {
+void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head) {
 	struct user_input* input_2 = input;
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input_2->command);
@@ -253,7 +269,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	else if (strcmp(cmd, "exit") == 0) {
 		*continue_sh = false;
 		background_check();
-		exit_processes();
+		exit_processes(&head);
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
@@ -267,8 +283,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (background) {
-		background_commands(input_2->args);
-
+		background_commands(input_2->args, &head);
 	}
 
 	else {
@@ -311,7 +326,7 @@ void foreground_commands(char** args, int* exit_status) {
 			abort();
 		}
 		execvp(args[0], args);
-		perror("Command not found.");
+		perror("Command not found");
 		exit(1);
 		break;
 	}
@@ -342,16 +357,25 @@ void background_check() {
 
 }
 
-void exit_processes() {
-
+void exit_processes(struct background_process* head) {
+	/*int i;
+	for (i = 0; i < number_background_processes; i++) {
+		kill(background_processes[i], SIGKILL);
+	}*/
+	while (head != NULL) {
+		kill(head->pid, SIGKILL);
+		head = head->next;
+	}
 }
 
-void background_commands(char** args) {
+void background_commands(char** args, struct background_process** head) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
 	int child_status = -5;
 	int child_signal = -5;
+
+	int get_child_pid;
 
 	int fork_counter = 0;
 
@@ -369,7 +393,6 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
-
 		break;
 	}
 	case 0: {
@@ -377,7 +400,11 @@ void background_commands(char** args) {
 		if (fork_counter > 25) {
 			abort();
 		}
+		get_child_pid = getpid();
+		add_process(get_child_pid, &head);
 		execvp(args[0], args);
+		printf("child process finished");
+		fflush(stdout);
 		perror("Command not found.");
 		exit(1);
 		break;
@@ -405,7 +432,9 @@ int main() {
 	char user_input[2049];
 	char pound_sign = '#';
 
-	//
+	struct background_process* head = NULL;
+	head = malloc(sizeof(struct background_process));
+
 	struct user_input* input;
 
 	// Variable expansion
@@ -427,7 +456,7 @@ int main() {
 			if (user_input[0] != pound_sign) {
 				variable_expansion(user_input, expanded_var);
 				input = process_user_input(user_input);
-				direction(input, &continue_sh, &child_processed, &exit_status);
+				direction(input, &continue_sh, &child_processed, &exit_status, &head);
 			}
 		}
 		// if fgets is null

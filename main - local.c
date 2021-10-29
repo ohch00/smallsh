@@ -354,7 +354,33 @@ void foreground_commands(char** args, int* exit_status) {
 	}
 }
 
-void background_check() {
+void background_check(struct background_process* head) {
+	head = head->next;
+	int check_finished = -5;
+	int childExitStatus = -5;
+	int child_status = -5;
+
+	while (head != NULL) {
+		check_finished = waitpid(head->pid, &childExitStatus, WNOHANG);
+		if (check_finished == -1) {
+			perror("Background Check: Error occurred.");
+			exit(1);
+		}
+		else if (check_finished == head->pid) {
+			if (WIFEXITED(childExitStatus)) {
+				child_status = WEXITSTATUS(childExitStatus);
+				printf("background pid %d is done: exit value %d", head->pid, child_status);
+				fflush(stdout);
+			}
+			else {
+				child_status = WTERMSIG(childExitStatus);
+				printf("background pid %d is done: terminated by signal %d", head->pid, child_status);
+				fflush(stdout);
+			}
+		}
+
+		head = head->next;
+	}
 
 }
 
@@ -398,7 +424,6 @@ void background_commands(char** args, struct background_process** head) {
 			abort();
 		}
 		execvp(args[0], args);
-		printf("child process finished");
 		perror("Command not found.");
 		exit(1);
 		break;
@@ -409,6 +434,8 @@ void background_commands(char** args, struct background_process** head) {
 			abort();
 		}
 		add_process(spawnPid, head);
+		printf("background pid is %d", spawnPid);
+		fflush(stdout);
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
 		if (WIFEXITED(childExitStatus)) {
 			child_status = WEXITSTATUS(childExitStatus);
@@ -442,6 +469,7 @@ int main() {
 	printf("$ smallsh\n");
 	// Prompt
 	while (continue_sh) {
+		background_check(head);
 		printf("\n: ");
 		fflush(stdout);
 		// if fgets is not null

@@ -234,6 +234,8 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	char* home;
 	char* filename;
 	bool has_arg = false;
+
+
 	if (input_2->args[1]) {
 		filename = calloc(strlen(input->args[1]) + 1, sizeof(char));
 		strcpy(filename, input_2->args[1]);
@@ -268,8 +270,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 
 	else if (strcmp(cmd, "exit") == 0) {
 		*continue_sh = false;
-		background_check();
-		exit_processes(&head);
+		exit_processes(*head);
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
@@ -283,7 +284,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (background) {
-		background_commands(input_2->args, &head);
+		background_commands(input_2->args, head);
 	}
 
 	else {
@@ -358,10 +359,7 @@ void background_check() {
 }
 
 void exit_processes(struct background_process* head) {
-	/*int i;
-	for (i = 0; i < number_background_processes; i++) {
-		kill(background_processes[i], SIGKILL);
-	}*/
+	head = head->next;
 	while (head != NULL) {
 		kill(head->pid, SIGKILL);
 		head = head->next;
@@ -374,8 +372,7 @@ void background_commands(char** args, struct background_process** head) {
 	int childExitStatus = -5;
 	int child_status = -5;
 	int child_signal = -5;
-
-	int get_child_pid;
+	int get_pid = getpid();
 
 	int fork_counter = 0;
 
@@ -400,11 +397,8 @@ void background_commands(char** args, struct background_process** head) {
 		if (fork_counter > 25) {
 			abort();
 		}
-		get_child_pid = getpid();
-		add_process(get_child_pid, &head);
 		execvp(args[0], args);
 		printf("child process finished");
-		fflush(stdout);
 		perror("Command not found.");
 		exit(1);
 		break;
@@ -414,6 +408,7 @@ void background_commands(char** args, struct background_process** head) {
 		if (fork_counter > 25) {
 			abort();
 		}
+		add_process(spawnPid, head);
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
 		if (WIFEXITED(childExitStatus)) {
 			child_status = WEXITSTATUS(childExitStatus);

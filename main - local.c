@@ -11,6 +11,7 @@ Project: Assignment 3
 #include <unistd.h>
 #include <stdbool.h>
 #include <signal.h>
+#include <fcntl.h>
 
 // struct for processing user input
 struct user_input
@@ -247,15 +248,6 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 		}
 	}
 
-	bool input_bool = false;
-	if (input_2->input_file) {
-		input_bool = true;
-	}
-	bool output_bool = false;
-	if (input_2->output_file) {
-		output_bool = true;
-	}
-
 	bool background = input_2->ampersand;
 
 	if (strcmp(cmd, "cd") == 0) {
@@ -276,6 +268,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	else if (strcmp(cmd, "status") == 0) {
 		if (child_processed) {
 			printf("exit value %d", exit_status);
+			fflush(stdout);
 		}
 		else {
 			printf("exit value 0");
@@ -284,18 +277,18 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (background) {
-		background_commands(input_2->args, head);
+		background_commands(input_2->args, head, input_2->input_file, input_2->output_file);
 	}
 
 	else {
-		foreground_commands(input_2->args, &exit_status);
+		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file);
 		*child_processed_bool = true;
 		*exit_status_int = exit_status;
 	}
 
 }
 
-void foreground_commands(char** args, int* exit_status) {
+void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
@@ -322,12 +315,48 @@ void foreground_commands(char** args, int* exit_status) {
 		break;
 	}
 	case 0: {
+		int fd;
+		int fd_o;
 		fork_counter = fork_counter + 1;
 		if (fork_counter > 25) {
 			abort();
 		}
+		// Processes and I/O
+		if (input_file) {
+			int sourceFD = open(input_file, O_RDONLY);
+			if (sourceFD == -1) {
+				perror("Input file cannot be opened.\n");
+				exit(1);
+			}
+			int result = dup2(sourceFD, 0);
+			if (result == -1) {
+				perror("Error occurred, foreground dup() input_file.\n");
+				exit(1);
+			}
+			fd = sourceFD;
+		}
+		if (output_file) {
+			int targetFD = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (targetFD == -1) {
+				perror("Output file cannot be opened.\n");
+				exit(1);
+			}
+			int result_2 = dup2(targetFD, 1);
+			if (result_2 == -1) {
+				perror("Error occorred, foreground dup() output_file.\n");
+				exit(1);
+			}
+			fd_o = targetFD;
+		}
 		execvp(args[0], args);
+		if (input_file) {
+			fcntl(fd, F_SETFD, FD_CLOEXEC);
+		}
+		if (output_file) {
+			fcntl(fd_o, F_SETFD, FD_CLOEXEC);
+		}
 		perror("Command not found");
+		fflush(stdout);
 		exit(1);
 		break;
 	}
@@ -347,7 +376,7 @@ void foreground_commands(char** args, int* exit_status) {
 			*exit_status = child_status;
 		}
 		else if (child_signal != -5) {
-			exit_status = child_signal;
+			*exit_status = child_signal;
 		}
 		break;
 	}
@@ -369,12 +398,12 @@ void background_check(struct background_process* head) {
 		else if (check_finished == head->pid) {
 			if (WIFEXITED(childExitStatus)) {
 				child_status = WEXITSTATUS(childExitStatus);
-				printf("background pid %d is done: exit value %d", head->pid, child_status);
+				printf("\nbackground pid %d is done: exit value %d", head->pid, child_status);
 				fflush(stdout);
 			}
 			else {
 				child_status = WTERMSIG(childExitStatus);
-				printf("background pid %d is done: terminated by signal %d", head->pid, child_status);
+				printf("\nbackground pid %d is done: terminated by signal %d", head->pid, child_status);
 				fflush(stdout);
 			}
 		}
@@ -392,7 +421,7 @@ void exit_processes(struct background_process* head) {
 	}
 }
 
-void background_commands(char** args, struct background_process** head) {
+void background_commands(char** args, struct background_process** head, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
@@ -419,12 +448,61 @@ void background_commands(char** args, struct background_process** head) {
 		break;
 	}
 	case 0: {
+		int fd;
+		int fd_o;
 		fork_counter = fork_counter + 1;
 		if (fork_counter > 25) {
 			abort();
 		}
+		if (input_file) {
+			int sourceFD = open(input_file, O_RDONLY);
+			if (sourceFD == -1) {
+				perror("Input file cannot be opened.\n");
+				exit(1);
+			}
+			fd = sourceFD;
+			int result = dup2(sourceFD, 0);
+			if (result == -1) {
+				perror("Error occurred, background dup() input_file.\n");
+				exit(1);
+			}
+		}
+		else {
+			int result = dup2("/dev/null", 0);
+			if (result == -1) {
+				perror("Error occurred, background dup() null input_file.\n");
+				exit(1);
+			}
+		}
+		if (output_file) {
+			int targetFD = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if (targetFD == -1) {
+				perror("Output file cannot be opened.\n");
+				exit(1);
+			}
+			fd_o = targetFD;
+			int result_2 = dup2(targetFD, 1);
+			if (result_2 == -1) {
+				perror("Error occurred, background dup() output_file.\n");
+				exit(1);
+			}
+		}
+		else {
+			int result_2 = dup2("/dev/null", 1);
+			if (result_2 == -1) {
+				perror("Error occurred, background dup() null output_file.\n");
+				exit(1);
+			}
+		}
 		execvp(args[0], args);
-		perror("Command not found.");
+		if (input_file) {
+			fcntl(fd, F_SETFD, FD_CLOEXEC);
+		}
+		if (output_file) {
+			fcntl(fd_o, F_SETFD, FD_CLOEXEC);
+		}
+		perror("Command not found.\n");
+		fflush(stdout);
 		exit(1);
 		break;
 	}
@@ -470,6 +548,7 @@ int main() {
 	// Prompt
 	while (continue_sh) {
 		background_check(head);
+		fflush(stdout);
 		printf("\n: ");
 		fflush(stdout);
 		// if fgets is not null

@@ -484,8 +484,8 @@ void background_commands(char** args, struct background_process** head, char* in
 			}
 		}
 		else {
-			int null = open("/dev/null", O_WRONLY);
-			int result_2 = dup2(null, 0);
+			int null_out = open("/dev/null", O_WRONLY);
+			int result_2 = dup2(null_out, 1);
 			if (result_2 == -1) {
 				perror("Error occurred, background dup() null output_file.\n");
 				exit(1);

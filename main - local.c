@@ -498,7 +498,7 @@ void background_commands(char** args, struct background_process** head, char* in
 		if (output_file) {
 			fcntl(fd_o, F_SETFD, FD_CLOEXEC);
 		}
-		perror("Command not found.");
+		perror("Command not found");
 		fflush(stdout);
 		exit(1);
 		break;
@@ -509,7 +509,9 @@ void background_commands(char** args, struct background_process** head, char* in
 			abort();
 		}
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
-		if (WIFEXITED(childExitStatus) != 0) {
+		int state = WIFEXITED(childExitStatus);
+
+		if (childExitStatus == 0) {
 			child_status = WEXITSTATUS(childExitStatus);
 			add_process(spawnPid, head);
 			printf("background pid is %d\n", spawnPid);
@@ -517,7 +519,6 @@ void background_commands(char** args, struct background_process** head, char* in
 		}
 		else {
 			child_signal = WTERMSIG(childExitStatus);
-			bool lkdfklg;
 		}
 		break;
 	}

@@ -267,11 +267,11 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 
 	else if (strcmp(cmd, "status") == 0) {
 		if (child_processed) {
-			printf("exit value %d", exit_status);
+			printf("exit value %d\n", exit_status);
 			fflush(stdout);
 		}
 		else {
-			printf("exit value 0");
+			printf("exit value 0\n");
 			fflush(stdout);
 		}
 	}
@@ -291,7 +291,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
-	int childExitStatus = -5;
+	int childExitStatus;
 	int child_status = -5;
 	int child_signal = -5;
 
@@ -343,7 +343,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 			}
 			int result_2 = dup2(targetFD, 1);
 			if (result_2 == -1) {
-				perror("Error occorred, foreground dup() output_file.\n");
+				perror("Error occurred, foreground dup() output_file.\n");
 				exit(1);
 			}
 			fd_o = targetFD;
@@ -366,7 +366,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 			abort();
 		}
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
-		if (WIFEXITED(childExitStatus)) {
+		if (WIFEXITED(childExitStatus) != 0) {
 			child_status = WEXITSTATUS(childExitStatus);
 		}
 		else {
@@ -391,23 +391,18 @@ void background_check(struct background_process* head) {
 
 	while (head != NULL) {
 		check_finished = waitpid(head->pid, &childExitStatus, WNOHANG);
-		if (check_finished == -1) {
-			perror("Background Check: Error occurred.");
-			exit(1);
-		}
-		else if (check_finished == head->pid) {
+		if (check_finished == head->pid) {
 			if (WIFEXITED(childExitStatus)) {
 				child_status = WEXITSTATUS(childExitStatus);
-				printf("\nbackground pid %d is done: exit value %d", head->pid, child_status);
+				printf("\nbackground pid %d is done: exit value %d\n", head->pid, child_status);
 				fflush(stdout);
 			}
 			else {
 				child_status = WTERMSIG(childExitStatus);
-				printf("\nbackground pid %d is done: terminated by signal %d", head->pid, child_status);
+				printf("\nbackground pid %d is done: terminated by signal %d\n", head->pid, child_status);
 				fflush(stdout);
 			}
 		}
-
 		head = head->next;
 	}
 
@@ -424,7 +419,7 @@ void exit_processes(struct background_process* head) {
 void background_commands(char** args, struct background_process** head, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
-	int childExitStatus = -5;
+	int childExitStatus;
 	int child_status = -5;
 	int child_signal = -5;
 	int get_pid = getpid();
@@ -468,7 +463,8 @@ void background_commands(char** args, struct background_process** head, char* in
 			}
 		}
 		else {
-			int result = dup2("/dev/null", 0);
+			int null = open("/dev/null", O_RDONLY);
+			int result = dup2(null, 0);
 			if (result == -1) {
 				perror("Error occurred, background dup() null input_file.\n");
 				exit(1);
@@ -488,7 +484,8 @@ void background_commands(char** args, struct background_process** head, char* in
 			}
 		}
 		else {
-			int result_2 = dup2("/dev/null", 1);
+			int null = open("/dev/null", O_WRONLY);
+			int result_2 = dup2(null, 0);
 			if (result_2 == -1) {
 				perror("Error occurred, background dup() null output_file.\n");
 				exit(1);
@@ -501,7 +498,7 @@ void background_commands(char** args, struct background_process** head, char* in
 		if (output_file) {
 			fcntl(fd_o, F_SETFD, FD_CLOEXEC);
 		}
-		perror("Command not found.\n");
+		perror("Command not found.");
 		fflush(stdout);
 		exit(1);
 		break;
@@ -511,15 +508,16 @@ void background_commands(char** args, struct background_process** head, char* in
 		if (fork_counter > 25) {
 			abort();
 		}
-		add_process(spawnPid, head);
-		printf("background pid is %d", spawnPid);
-		fflush(stdout);
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
-		if (WIFEXITED(childExitStatus)) {
+		if (WIFEXITED(childExitStatus) != 0) {
 			child_status = WEXITSTATUS(childExitStatus);
+			add_process(spawnPid, head);
+			printf("background pid is %d\n", spawnPid);
+			fflush(stdout);
 		}
 		else {
 			child_signal = WTERMSIG(childExitStatus);
+			bool lkdfklg;
 		}
 		break;
 	}
@@ -549,7 +547,7 @@ int main() {
 	while (continue_sh) {
 		background_check(head);
 		fflush(stdout);
-		printf("\n: ");
+		printf(": ");
 		fflush(stdout);
 		// if fgets is not null
 		if (strlen(fgets(user_input, 2049, stdin)) > 1) {

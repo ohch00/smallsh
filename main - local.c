@@ -43,7 +43,7 @@ struct user_input* createInput(char* input) {
 
 
 	int counter = 0;
-	int conversion;
+	int conversion = 0;
 	char ampersand = '&';
 	char input_symbol = '<';
 	char output_symbol = '>';
@@ -221,7 +221,7 @@ struct background_process* add_process(pid_t spawnPid, struct background_process
 }
 
 
-void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head) {
+void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head, bool* terminated) {
 	struct user_input* input_2 = input;
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input_2->command);
@@ -231,6 +231,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 
 	bool child_processed = *child_processed_bool;
 	int exit_status = *exit_status_int;
+	bool terminated_process = *terminated;
 
 	char* home;
 	char* filename;
@@ -270,6 +271,10 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 			printf("exit value %d\n", exit_status);
 			fflush(stdout);
 		}
+		else if (terminated) {
+			printf("terminated by signal %d", exit_status);
+			fflush(stdout);
+		}
 		else {
 			printf("exit value 0\n");
 			fflush(stdout);
@@ -281,14 +286,14 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else {
-		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file);
+		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file, &terminated);
 		*child_processed_bool = true;
 		*exit_status_int = exit_status;
 	}
 
 }
 
-void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file) {
+void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file, bool* terminated) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus;
@@ -377,6 +382,9 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 		}
 		else if (child_signal != -5) {
 			*exit_status = child_signal;
+			*terminated = true;
+			printf("terminated by signal %d\n", child_signal);
+			fflush(stdout);
 		}
 		break;
 	}
@@ -542,6 +550,7 @@ int main() {
 	// Direction
 	bool child_processed = false;
 	int exit_status = -5;
+	bool terminated = false;
 
 	printf("$ smallsh\n");
 	// Prompt
@@ -557,7 +566,7 @@ int main() {
 			if (user_input[0] != pound_sign) {
 				variable_expansion(user_input, expanded_var);
 				input = process_user_input(user_input);
-				direction(input, &continue_sh, &child_processed, &exit_status, &head);
+				direction(input, &continue_sh, &child_processed, &exit_status, &head, &terminated);
 			}
 		}
 		// if fgets is null

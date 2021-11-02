@@ -12,7 +12,6 @@ Project: Assignment 3
 #include <stdbool.h>
 #include <signal.h>
 #include <fcntl.h>
-#include <signal.h>
 
 // struct for processing user input
 struct user_input
@@ -42,7 +41,7 @@ struct user_input* createInput(char* input) {
 	currInput->command = calloc(strlen(token) + 1, sizeof(char));
 	strcpy(currInput->command, token);
 
-
+	
 	int counter = 0;
 	int conversion = 0;
 	char ampersand = '&';
@@ -63,8 +62,8 @@ struct user_input* createInput(char* input) {
 			conversion = token[0];
 		}
 		token_2 = strtok_r(NULL, " ", &saveptr_2);
-
-
+		
+		
 		// if input or output symbol is encountered, arguments have ended
 		if (conversion == input_symbol || conversion == output_symbol) {
 			symbol = true;
@@ -81,7 +80,7 @@ struct user_input* createInput(char* input) {
 
 		currInput->args[counter] = token;
 		counter += 1;
-
+		
 	}
 
 
@@ -114,7 +113,7 @@ struct user_input* createInput(char* input) {
 			token = strtok_r(NULL, " ", &saveptr);
 			token_2 = strtok_r(NULL, " ", &saveptr_2);
 		}
-
+		
 	}
 
 	currInput->next = NULL;
@@ -125,7 +124,7 @@ struct user_input* createInput(char* input) {
 
 
 // Process user input
-struct user_input* process_user_input(char* user_input) {
+struct user_input* process_user_input(char *user_input) {
 	char copy_user_input[2049];
 	strcpy(copy_user_input, user_input);
 
@@ -165,12 +164,12 @@ void variable_expansion(char* user_input, char* expanded_var) {
 	sprintf(digits, "%d", get_pid);
 	int length;
 	length = strlen(digits);
-
+	
 	// calculate size of char needed for expanded_var
-	int size_expanded_var = (length * strlen(copy_user_input) + 1);
+	int size_expanded_var = (length * strlen(copy_user_input)+1);
 	char hold_expanded_var[size_expanded_var];
 	hold_expanded_var[0] = '\0';
-
+	
 	// https://www.linuxquestions.org/questions/programming-9/replace-a-substring-with-another-string-in-c-170076/
 	bool replacing = true;
 	char* i;
@@ -193,8 +192,8 @@ void variable_expansion(char* user_input, char* expanded_var) {
 		}
 		strcpy(expanded_var, hold_expanded_var);
 	}
-
-
+	
+	
 }
 
 struct background_process
@@ -222,7 +221,7 @@ struct background_process* add_process(pid_t spawnPid, struct background_process
 }
 
 
-void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head, bool* terminated_status, struct sigaction* SIGINT_action, struct sigaction* SIGTSTP_action) {
+void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head, bool* terminated) {
 	struct user_input* input_2 = input;
 	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
 	strcpy(cmd, input_2->command);
@@ -232,7 +231,7 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 
 	bool child_processed = *child_processed_bool;
 	int exit_status = *exit_status_int;
-	bool terminated_process = *terminated_status;
+	bool terminated_process = *terminated;
 
 	char* home;
 	char* filename;
@@ -268,12 +267,12 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (strcmp(cmd, "status") == 0) {
-		if (child_processed && !terminated_process) {
+		if (child_processed) {
 			printf("exit value %d\n", exit_status);
 			fflush(stdout);
 		}
-		else if (terminated_process) {
-			printf("terminated by signal %d\n", exit_status);
+		else if (terminated) {
+			printf("terminated by signal %d", exit_status);
 			fflush(stdout);
 		}
 		else {
@@ -283,50 +282,54 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	}
 
 	else if (background) {
-		background_commands(input_2->args, head, input_2->input_file, input_2->output_file, SIGINT_action, SIGTSTP_action);
+		background_commands(input_2->args, head, input_2->input_file, input_2->output_file);
 	}
 
 	else {
-		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file, &terminated_process, SIGINT_action, SIGTSTP_action);
+		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file, &terminated);
 		*child_processed_bool = true;
 		*exit_status_int = exit_status;
-		*terminated_status = terminated_process;
 	}
 
 }
 
-void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file, bool* terminated, struct sigaction* SIGINT_action_2, struct sigaction** SIGTSTP_action) {
+void foreground_commands(char **args, int *exit_status, char *input_file, char *output_file, bool* terminated) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
-	int childExitStatus = -5;
+	int childExitStatus;
 	int child_status = -5;
 	int child_signal = -5;
+
+	int fork_counter = 0;
+
 	spawnPid = fork();
+	fork_counter = fork_counter + 1;
 
-	struct sigaction SIGINT_action = { 0 };
-	//SIGINT_action.sa_handler = SIG_DFL;
-	SIGINT_action.sa_handler = SIG_IGN;
-	sigfillset(&SIGINT_action.sa_mask);
-	SIGINT_action.sa_flags = SA_RESTART;
-
-	sigaction(SIGINT, &SIGINT_action, NULL);
-
-
+	if (fork_counter > 25) {
+		abort();
+	}
 	switch (spawnPid) {
 	case -1: {
 		perror("Error Occurred.\n");
 		exit(1);
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
+
 		break;
 	}
 	case 0: {
-		SIGINT_action.sa_handler = SIG_DFL;
-		sigaction(SIGINT, &SIGINT_action, NULL);
 		int fd;
 		int fd_o;
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
 		// Processes and I/O
 		if (input_file) {
 			int sourceFD = open(input_file, O_RDONLY);
-			if (sourceFD == -1) {
+			if (sourceFD == -1){
 				perror("Input file cannot be opened.\n");
 				exit(1);
 			}
@@ -363,13 +366,21 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 		break;
 	}
 	default: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
-		if (WIFEXITED(childExitStatus)) {
+		if (WIFEXITED(childExitStatus) != 0) {
 			child_status = WEXITSTATUS(childExitStatus);
-			*exit_status = child_status;
 		}
 		else {
 			child_signal = WTERMSIG(childExitStatus);
+		}
+		if (child_status != -5) {
+			*exit_status = child_status;
+		}
+		else if (child_signal != -5) {
 			*exit_status = child_signal;
 			*terminated = true;
 			printf("terminated by signal %d\n", child_signal);
@@ -391,12 +402,12 @@ void background_check(struct background_process* head) {
 		if (check_finished == head->pid) {
 			if (WIFEXITED(childExitStatus)) {
 				child_status = WEXITSTATUS(childExitStatus);
-				printf("background pid %d is done: exit value %d\n", head->pid, child_status);
+				printf("\nbackground pid %d is done: exit value %d\n", head->pid, child_status);
 				fflush(stdout);
 			}
 			else {
 				child_status = WTERMSIG(childExitStatus);
-				printf("background pid %d is done: terminated by signal %d\n", head->pid, child_status);
+				printf("\nbackground pid %d is done: terminated by signal %d\n", head->pid, child_status);
 				fflush(stdout);
 			}
 		}
@@ -413,22 +424,39 @@ void exit_processes(struct background_process* head) {
 	}
 }
 
-void background_commands(char** args, struct background_process** head, char* input_file, char* output_file, struct sigaction** SIGINT_action, struct sigaction** SIGTSTP_action) {
+void background_commands(char **args, struct background_process** head, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus;
 	int child_status = -5;
+	int child_signal = -5;
+	int get_pid = getpid();
+
+	int fork_counter = 0;
 
 	spawnPid = fork();
+	fork_counter = fork_counter + 1;
+
+	if (fork_counter > 25) {
+		abort();
+	}
 	switch (spawnPid) {
 	case -1: {
 		perror("Error Occurred.\n");
 		exit(1);
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
 		break;
 	}
 	case 0: {
 		int fd;
 		int fd_o;
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
 		if (input_file) {
 			int sourceFD = open(input_file, O_RDONLY);
 			if (sourceFD == -1) {
@@ -479,61 +507,30 @@ void background_commands(char** args, struct background_process** head, char* in
 			fcntl(fd_o, F_SETFD, FD_CLOEXEC);
 		}
 		perror("Command not found");
-		exit(1); break;
+		fflush(stdout);
+		exit(1);
+		break;
 	}
 	default: {
+		fork_counter = fork_counter + 1;
+		if (fork_counter > 25) {
+			abort();
+		}
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, WNOHANG);
-		// exit normally
-		bool state = WIFEXITED(childExitStatus);
-		int state_value = WEXITSTATUS(childExitStatus);
+		int state = WIFEXITED(childExitStatus);
 
-		// exit not normally
-		bool state_terminated = WIFSIGNALED(childExitStatus);
-		int state_termination_value = WTERMSIG(childExitStatus);
-
-		// slow-running background process to keep track of
-		if (actualPid != spawnPid) {
+		if (childExitStatus == 0) {
 			child_status = WEXITSTATUS(childExitStatus);
 			add_process(spawnPid, head);
 			printf("background pid is %d\n", spawnPid);
 			fflush(stdout);
 		}
-
-		else if (actualPid == spawnPid && state) {
-			// fast background process
-			if (state_value == 0) {
-				child_status = WEXITSTATUS(childExitStatus);
-				printf("background pid is %d\n", spawnPid);
-				printf("background pid %d is done: exit value %d\n", spawnPid, child_status);
-				fflush(stdout);
-			}
-			// command error
-			else if (state_value == 1) {
-				break;
-			}
-
-		}
-		else if (actualPid == spawnPid && state_terminated) {
-			child_status = WTERMSIG(childExitStatus);
-			printf("background pid %d is done: terminated by signal %d\n", spawnPid, child_status);
-			fflush(stdout);
-		}
 		else {
-			printf("Error\n");
-			fflush(stdout);
+			child_signal = WTERMSIG(childExitStatus);
 		}
 		break;
 	}
 	}
-}
-
-void catch_SIGINT_parent(int signo) {
-	char* message = "SIGINT \n";
-	write(STDOUT_FILENO, message, 10);
-}
-
-void catch_SIGTSTP(int signo) {
-
 }
 
 
@@ -541,7 +538,7 @@ int main() {
 	bool continue_sh = true;
 	char user_input[2049];
 	char pound_sign = '#';
-
+	
 	struct background_process* head = NULL;
 	head = malloc(sizeof(struct background_process));
 
@@ -555,23 +552,7 @@ int main() {
 	int exit_status = -5;
 	bool terminated = false;
 
-	// Signals - Exploration: Signal Handling API
-	struct sigaction SIGINT_action = { 0 }, SIGTSTP_action = { 0 };
-	//SIGINT_action.sa_handler = SIG_DFL;
-	SIGINT_action.sa_handler = SIG_IGN;
-	sigfillset(&SIGINT_action.sa_mask);
-	SIGINT_action.sa_flags = SA_RESTART;
-
-	SIGTSTP_action.sa_handler = catch_SIGTSTP;
-	sigfillset(&SIGTSTP_action.sa_mask);
-	SIGTSTP_action.sa_flags = SA_RESTART;
-
-	sigaction(SIGINT, &SIGINT_action, NULL);
-	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
-
-
 	printf("$ smallsh\n");
-	fflush(stdout);
 	// Prompt
 	while (continue_sh) {
 		background_check(head);
@@ -585,7 +566,7 @@ int main() {
 			if (user_input[0] != pound_sign) {
 				variable_expansion(user_input, expanded_var);
 				input = process_user_input(user_input);
-				direction(input, &continue_sh, &child_processed, &exit_status, &head, &terminated, &SIGINT_action, &SIGTSTP_action);
+				direction(input, &continue_sh, &child_processed, &exit_status, &head, &terminated);
 			}
 		}
 		// if fgets is null

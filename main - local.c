@@ -321,7 +321,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 		if (input_file) {
 			int sourceFD = open(input_file, O_RDONLY);
 			if (sourceFD == -1) {
-				perror("Input file cannot be opened.\n");
+				perror(input_file);
 				exit(1);
 			}
 			int result = dup2(sourceFD, 0);
@@ -334,7 +334,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 		if (output_file) {
 			int targetFD = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 			if (targetFD == -1) {
-				perror("Output file cannot be opened.\n");
+				perror(output_file);
 				exit(1);
 			}
 			int result_2 = dup2(targetFD, 1);
@@ -355,7 +355,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 		}
 
 		// Error message if command isn't found using execvp
-		perror("Command not found");
+		perror(args[0]);
 		fflush(stdout);
 		exit(1);
 		break;
@@ -468,7 +468,7 @@ void background_commands(char** args, struct background_process** head, char* in
 		if (input_file) {
 			int sourceFD = open(input_file, O_RDONLY);
 			if (sourceFD == -1) {
-				perror("Input file cannot be opened.\n");
+				perror(input_file);
 				exit(1);
 			}
 			fd = sourceFD;
@@ -490,7 +490,7 @@ void background_commands(char** args, struct background_process** head, char* in
 		if (output_file) {
 			int targetFD = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 			if (targetFD == -1) {
-				perror("Output file cannot be opened.\n");
+				perror(output_file);
 				exit(1);
 			}
 			fd_o = targetFD;
@@ -521,7 +521,7 @@ void background_commands(char** args, struct background_process** head, char* in
 		}
 
 		// Error message if command isn't found usign execvp
-		perror("Command not found");
+		perror(args[0]);
 		exit(1); break;
 	}
 	default: {
@@ -627,16 +627,14 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 	else if (strcmp(cmd, "status") == 0) {
 		if (child_processed && !terminated_process) {
 			printf("exit value %d\n", exit_status);
-			fflush(stdout);
 		}
 		else if (terminated_process) {
 			printf("terminated by signal %d\n", exit_status);
-			fflush(stdout);
 		}
 		else {
 			printf("exit value 0\n");
-			fflush(stdout);
 		}
+		fflush(stdout);
 	}
 
 	// background commands

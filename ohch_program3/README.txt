@@ -1,6 +1,7 @@
 To compile:
 On the os1.engr.oregonstate.edu server, type "gcc --std=gnu99 -o smallsh main.c" 
 in the terminal without the quotation marks.
+Note: A warning might appear when compiling the executable, but the program should still compile without any errors.
 
 To run:
 // Citation for running the testing script with smallsh.

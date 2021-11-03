@@ -14,6 +14,11 @@ Project: Assignment 3
 #include <fcntl.h>
 #include <signal.h>
 
+// Global booleans
+bool is_sigtstp = false;
+bool is_var_expansion = false;
+
+
 // struct for processing user input
 struct user_input
 {
@@ -117,6 +122,10 @@ struct user_input* createInput(char* input) {
 
 	}
 
+	if (is_sigtstp) {
+		currInput->ampersand = false;
+	}
+
 	currInput->next = NULL;
 
 	return currInput;
@@ -125,12 +134,16 @@ struct user_input* createInput(char* input) {
 
 
 // Process user input
-struct user_input* process_user_input(char* user_input) {
+struct user_input* process_user_input(char** user_input) {
 	char copy_user_input[2049];
 	strcpy(copy_user_input, user_input);
 
 	// remove /n character at input
-	copy_user_input[strlen(copy_user_input) - 1] = 0;
+	if (!is_var_expansion) {
+		copy_user_input[strlen(copy_user_input) - 1] = 0;
+		is_var_expansion = false;
+	}
+
 
 	// create input struct
 	struct user_input* head = NULL;
@@ -152,7 +165,7 @@ struct user_input* process_user_input(char* user_input) {
 
 
 // $$ Expansion
-void variable_expansion(char* user_input, char* expanded_var) {
+char* variable_expansion(char** user_input) {
 	char* copy_user_input = calloc(strlen(user_input) + 1, sizeof(char));
 	strcpy(copy_user_input, user_input);
 	char var[] = "$$";
@@ -167,12 +180,39 @@ void variable_expansion(char* user_input, char* expanded_var) {
 	length = strlen(digits);
 
 	// calculate size of char needed for expanded_var
-	int size_expanded_var = (length * strlen(copy_user_input) + 1);
+	int original_length = strlen(user_input);
+	int var_counter = 0;
+
+	for (int i = 0; i < original_length - 1; i++) {
+		if (copy_user_input[i] == '$' && copy_user_input[i + 1] == '$') {
+			var_counter = var_counter + 1;
+		}
+	}
+
+	if (var_counter > 0) {
+		is_var_expansion = true;
+	}
+
+	int size_expanded_var = (var_counter * length * strlen(copy_user_input) + 1);
 	char hold_expanded_var[size_expanded_var];
 	hold_expanded_var[0] = '\0';
 
+	// https://edstem.org/us/courses/14269/discussion/773207
+
+	for (int i = 0; i < original_length - 1; i++) {
+		if (copy_user_input[i] == '$' && copy_user_input[i + 1] == '$') {
+			strncat(hold_expanded_var, digits, length);
+			i = i + 2;
+		}
+		else {
+			hold_expanded_var[i] = copy_user_input[i];
+		}
+	}
+
+	return hold_expanded_var;
+
 	// https://www.linuxquestions.org/questions/programming-9/replace-a-substring-with-another-string-in-c-170076/
-	bool replacing = true;
+	/*bool replacing = true;
 	char* i;
 
 	i = strstr(copy_user_input, var);
@@ -192,8 +232,7 @@ void variable_expansion(char* user_input, char* expanded_var) {
 			}
 		}
 		strcpy(expanded_var, hold_expanded_var);
-	}
-
+	}*/
 
 }
 
@@ -212,90 +251,29 @@ struct background_process* add_process(pid_t spawnPid, struct background_process
 	newNode->next = NULL;
 	if (*head == NULL) {
 		*head = newNode;
-		return;
+		return 0;
 	}
 	while (last->next != NULL) {
 		last = last->next;
 	}
 	last->next = newNode;
-	return;
+	return 0;
 }
 
-
-void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head, bool* terminated_status, struct sigaction* SIGINT_action, struct sigaction* SIGTSTP_action) {
-	struct user_input* input_2 = input;
-	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
-	strcpy(cmd, input_2->command);
-
-	char dest_array[512][200];
-	int arg_counter = 0;
-
-	bool child_processed = *child_processed_bool;
-	int exit_status = *exit_status_int;
-	bool terminated_process = *terminated_status;
-
-	char* home;
-	char* filename;
-	bool has_arg = false;
-
-
-	if (input_2->args[1]) {
-		filename = calloc(strlen(input->args[1]) + 1, sizeof(char));
-		strcpy(filename, input_2->args[1]);
-		has_arg = true;
-
-		while (input_2->args[arg_counter] != NULL) {
-			strcpy(dest_array[arg_counter], input->args[arg_counter]);
-			arg_counter = arg_counter + 1;
-		}
-	}
-
-	bool background = input_2->ampersand;
-
-	if (strcmp(cmd, "cd") == 0) {
-		if (has_arg) {
-			chdir(filename);
-		}
-		else {
-			home = getenv("HOME");
-			chdir(home);
-		}
-	}
-
-	else if (strcmp(cmd, "exit") == 0) {
-		*continue_sh = false;
-		exit_processes(*head);
-	}
-
-	else if (strcmp(cmd, "status") == 0) {
-		if (child_processed && !terminated_process) {
-			printf("exit value %d\n", exit_status);
-			fflush(stdout);
-		}
-		else if (terminated_process) {
-			printf("terminated by signal %d\n", exit_status);
-			fflush(stdout);
-		}
-		else {
-			printf("exit value 0\n");
-			fflush(stdout);
-		}
-	}
-
-	else if (background) {
-		background_commands(input_2->args, head, input_2->input_file, input_2->output_file, SIGINT_action, SIGTSTP_action);
-	}
-
-	else {
-		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file, &terminated_process, SIGINT_action, SIGTSTP_action);
-		*child_processed_bool = true;
-		*exit_status_int = exit_status;
-		*terminated_status = terminated_process;
-	}
+void sigtstp_function() {
+	is_sigtstp = true;
+	char* message = "Entering foreground-only mode (& is now ignored)\n";
+	write(STDOUT_FILENO, message, 52);
 
 }
 
-void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file, bool* terminated, struct sigaction* SIGINT_action_2, struct sigaction** SIGTSTP_action) {
+void sigtstp_function_2() {
+	is_sigtstp = false;
+	char* message = "Exiting foreground-only mode\n";
+	write(STDOUT_FILENO, message, 31);
+}
+
+void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file, bool* terminated) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus = -5;
@@ -304,12 +282,21 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 	spawnPid = fork();
 
 	struct sigaction SIGINT_action = { 0 };
-	//SIGINT_action.sa_handler = SIG_DFL;
 	SIGINT_action.sa_handler = SIG_IGN;
 	sigfillset(&SIGINT_action.sa_mask);
 	SIGINT_action.sa_flags = SA_RESTART;
-
 	sigaction(SIGINT, &SIGINT_action, NULL);
+
+	struct sigaction SIGTSTP_action = { 0 };
+	sigfillset(&SIGTSTP_action.sa_mask);
+	SIGTSTP_action.sa_flags = SA_RESTART;
+	if (is_sigtstp) {
+		SIGTSTP_action.sa_handler = sigtstp_function_2;
+	}
+	else if (!is_sigtstp) {
+		SIGTSTP_action.sa_handler = sigtstp_function;
+	}
+	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 
 	switch (spawnPid) {
@@ -321,6 +308,8 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 	case 0: {
 		SIGINT_action.sa_handler = SIG_DFL;
 		sigaction(SIGINT, &SIGINT_action, NULL);
+		SIGTSTP_action.sa_handler = SIG_IGN;
+		sigfillset(&SIGTSTP_action.sa_mask);
 		int fd;
 		int fd_o;
 		// Processes and I/O
@@ -364,6 +353,7 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 	}
 	default: {
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
+		SIGTSTP_action.sa_handler = sigtstp_function;
 		if (WIFEXITED(childExitStatus)) {
 			child_status = WEXITSTATUS(childExitStatus);
 			*exit_status = child_status;
@@ -413,11 +403,23 @@ void exit_processes(struct background_process* head) {
 	}
 }
 
-void background_commands(char** args, struct background_process** head, char* input_file, char* output_file, struct sigaction** SIGINT_action, struct sigaction** SIGTSTP_action) {
+void background_commands(char** args, struct background_process** head, char* input_file, char* output_file) {
 	// https://www.youtube.com/watch?v=1R9h-H2UnLs
 	pid_t spawnPid = -5;
 	int childExitStatus;
 	int child_status = -5;
+
+	struct sigaction SIGINT_action = { 0 };
+	SIGINT_action.sa_handler = SIG_IGN;
+	sigfillset(&SIGINT_action.sa_mask);
+	SIGINT_action.sa_flags = SA_RESTART;
+	sigaction(SIGINT, &SIGINT_action, NULL);
+
+	struct sigaction SIGTSTP_action = { 0 };
+	SIGTSTP_action.sa_handler = SIG_IGN;
+	sigfillset(&SIGTSTP_action.sa_mask);
+	SIGTSTP_action.sa_flags = SA_RESTART;
+	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 	spawnPid = fork();
 	switch (spawnPid) {
@@ -527,14 +529,79 @@ void background_commands(char** args, struct background_process** head, char* in
 	}
 }
 
-void catch_SIGINT_parent(int signo) {
-	char* message = "SIGINT \n";
-	write(STDOUT_FILENO, message, 10);
+void direction(struct user_input* input, bool* continue_sh, bool* child_processed_bool, int* exit_status_int, struct background_process** head, bool* terminated_status) {
+	struct user_input* input_2 = input;
+	char* cmd = calloc(strlen(input->command) + 1, sizeof(char));
+	strcpy(cmd, input_2->command);
+
+	char dest_array[512][200];
+	int arg_counter = 0;
+
+	bool child_processed = *child_processed_bool;
+	int exit_status = *exit_status_int;
+	bool terminated_process = *terminated_status;
+
+	char* home;
+	char* filename;
+	bool has_arg = false;
+
+
+	if (input_2->args[1]) {
+		filename = calloc(strlen(input->args[1]) + 1, sizeof(char));
+		strcpy(filename, input_2->args[1]);
+		has_arg = true;
+
+		while (input_2->args[arg_counter] != NULL) {
+			strcpy(dest_array[arg_counter], input->args[arg_counter]);
+			arg_counter = arg_counter + 1;
+		}
+	}
+
+	bool background = input_2->ampersand;
+
+	if (strcmp(cmd, "cd") == 0) {
+		if (has_arg) {
+			chdir(filename);
+		}
+		else {
+			home = getenv("HOME");
+			chdir(home);
+		}
+	}
+
+	else if (strcmp(cmd, "exit") == 0) {
+		*continue_sh = false;
+		exit_processes(*head);
+	}
+
+	else if (strcmp(cmd, "status") == 0) {
+		if (child_processed && !terminated_process) {
+			printf("exit value %d\n", exit_status);
+			fflush(stdout);
+		}
+		else if (terminated_process) {
+			printf("terminated by signal %d\n", exit_status);
+			fflush(stdout);
+		}
+		else {
+			printf("exit value 0\n");
+			fflush(stdout);
+		}
+	}
+
+	else if (background) {
+		background_commands(input_2->args, head, input_2->input_file, input_2->output_file);
+	}
+
+	else {
+		foreground_commands(input_2->args, &exit_status, input_2->input_file, input_2->output_file, &terminated_process);
+		*child_processed_bool = true;
+		*exit_status_int = exit_status;
+		*terminated_status = terminated_process;
+	}
+
 }
 
-void catch_SIGTSTP(int signo) {
-
-}
 
 
 int main() {
@@ -548,7 +615,7 @@ int main() {
 	struct user_input* input;
 
 	// Variable expansion
-	char* expanded_var[2049];
+	char* expanded_var;
 
 	// Direction
 	bool child_processed = false;
@@ -561,12 +628,16 @@ int main() {
 	SIGINT_action.sa_handler = SIG_IGN;
 	sigfillset(&SIGINT_action.sa_mask);
 	SIGINT_action.sa_flags = SA_RESTART;
+	sigaction(SIGINT, &SIGINT_action, NULL);
 
-	SIGTSTP_action.sa_handler = catch_SIGTSTP;
 	sigfillset(&SIGTSTP_action.sa_mask);
 	SIGTSTP_action.sa_flags = SA_RESTART;
-
-	sigaction(SIGINT, &SIGINT_action, NULL);
+	if (is_sigtstp) {
+		SIGTSTP_action.sa_handler = sigtstp_function_2;
+	}
+	else if (!is_sigtstp) {
+		SIGTSTP_action.sa_handler = sigtstp_function;
+	}
 	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 
@@ -583,9 +654,15 @@ int main() {
 
 			// if fgets is not a comment (pound sign)
 			if (user_input[0] != pound_sign) {
-				variable_expansion(user_input, expanded_var);
-				input = process_user_input(user_input);
-				direction(input, &continue_sh, &child_processed, &exit_status, &head, &terminated, &SIGINT_action, &SIGTSTP_action);
+				expanded_var = variable_expansion(user_input);
+				if (is_var_expansion) {
+					input = process_user_input(expanded_var);
+				}
+				else {
+					input = process_user_input(user_input);
+				}
+				//input = process_user_input(user_input);
+				direction(input, &continue_sh, &child_processed, &exit_status, &head, &terminated);
 			}
 		}
 		// if fgets is null

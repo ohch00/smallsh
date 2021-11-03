@@ -134,7 +134,7 @@ struct user_input* createInput(char* input) {
 
 
 // Process user input
-struct user_input* process_user_input(char** user_input) {
+struct user_input* process_user_input(char* user_input) {
 	char copy_user_input[2049];
 	strcpy(copy_user_input, user_input);
 
@@ -165,7 +165,7 @@ struct user_input* process_user_input(char** user_input) {
 
 
 // $$ Expansion
-char* variable_expansion(char** user_input) {
+void variable_expansion(char* user_input, char* expanded_var) {
 	char* copy_user_input = calloc(strlen(user_input) + 1, sizeof(char));
 	strcpy(copy_user_input, user_input);
 	char var[] = "$$";
@@ -193,7 +193,7 @@ char* variable_expansion(char** user_input) {
 		is_var_expansion = true;
 	}
 
-	int size_expanded_var = (var_counter * length * strlen(copy_user_input) + 1);
+	int size_expanded_var = ((var_counter + 1) * length * strlen(copy_user_input) + 1);
 	char hold_expanded_var[size_expanded_var];
 	hold_expanded_var[0] = '\0';
 
@@ -208,32 +208,7 @@ char* variable_expansion(char** user_input) {
 			hold_expanded_var[i] = copy_user_input[i];
 		}
 	}
-
-	return hold_expanded_var;
-
-	// https://www.linuxquestions.org/questions/programming-9/replace-a-substring-with-another-string-in-c-170076/
-	/*bool replacing = true;
-	char* i;
-
-	i = strstr(copy_user_input, var);
-
-	if (i) {
-		while (replacing) {
-			i = strstr(copy_user_input, var);
-			if (i) {
-				strncpy(hold_expanded_var, copy_user_input, i - copy_user_input);
-				hold_expanded_var[i - copy_user_input] = '\0';
-				sprintf(hold_expanded_var + (i - copy_user_input), "%s%s", digits, i + strlen(var));
-				strcpy(copy_user_input, hold_expanded_var);
-			}
-			else {
-				replacing = false;
-				break;
-			}
-		}
-		strcpy(expanded_var, hold_expanded_var);
-	}*/
-
+	strcpy(expanded_var, hold_expanded_var);
 }
 
 struct background_process
@@ -260,17 +235,17 @@ struct background_process* add_process(pid_t spawnPid, struct background_process
 	return 0;
 }
 
-void sigtstp_function() {
+void sigtstp_function(int signo) {
 	is_sigtstp = true;
-	char* message = "Entering foreground-only mode (& is now ignored)\n";
-	write(STDOUT_FILENO, message, 52);
+	char* message = "\nEntering foreground-only mode (& is now ignored)\n: ";
+	write(STDOUT_FILENO, message, 53);
 
 }
 
-void sigtstp_function_2() {
+void sigtstp_function_2(int signo) {
 	is_sigtstp = false;
-	char* message = "Exiting foreground-only mode\n";
-	write(STDOUT_FILENO, message, 31);
+	char* message = "\nExiting foreground-only mode\n: ";
+	write(STDOUT_FILENO, message, 33);
 }
 
 void foreground_commands(char** args, int* exit_status, char* input_file, char* output_file, bool* terminated) {
@@ -289,13 +264,19 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 
 	struct sigaction SIGTSTP_action = { 0 };
 	sigfillset(&SIGTSTP_action.sa_mask);
-	SIGTSTP_action.sa_flags = SA_RESTART;
+	SIGTSTP_action.sa_flags = 0;
 	if (is_sigtstp) {
 		SIGTSTP_action.sa_handler = sigtstp_function_2;
 	}
 	else if (!is_sigtstp) {
 		SIGTSTP_action.sa_handler = sigtstp_function;
 	}
+
+	sigset_t signal_set;
+	sigemptyset(&signal_set);
+	sigaddset(&signal_set, SIGTSTP);
+	sigprocmask(SIG_BLOCK, &signal_set, NULL);
+
 	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
 
 
@@ -353,7 +334,23 @@ void foreground_commands(char** args, int* exit_status, char* input_file, char* 
 	}
 	default: {
 		pid_t actualPid = waitpid(spawnPid, &childExitStatus, 0);
-		SIGTSTP_action.sa_handler = sigtstp_function;
+
+		// https://stackoverflow.com/questions/5288910/sigprocmask-blocking-signals-in-unix
+
+		sigfillset(&SIGTSTP_action.sa_mask);
+		if (is_sigtstp) {
+			SIGTSTP_action.sa_handler = sigtstp_function_2;
+		}
+		else if (!is_sigtstp) {
+			SIGTSTP_action.sa_handler = sigtstp_function;
+		}
+		sigset_t signal_set;
+		sigemptyset(&signal_set);
+		sigaddset(&signal_set, SIGTSTP);
+		sigprocmask(SIG_BLOCK, &signal_set, NULL);
+		sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
+
 		if (WIFEXITED(childExitStatus)) {
 			child_status = WEXITSTATUS(childExitStatus);
 			*exit_status = child_status;
@@ -602,8 +599,6 @@ void direction(struct user_input* input, bool* continue_sh, bool* child_processe
 
 }
 
-
-
 int main() {
 	bool continue_sh = true;
 	char user_input[2049];
@@ -616,6 +611,7 @@ int main() {
 
 	// Variable expansion
 	char* expanded_var;
+	expanded_var = malloc(sizeof(char) * 500);
 
 	// Direction
 	bool child_processed = false;
@@ -624,11 +620,16 @@ int main() {
 
 	// Signals - Exploration: Signal Handling API
 	struct sigaction SIGINT_action = { 0 }, SIGTSTP_action = { 0 };
-	//SIGINT_action.sa_handler = SIG_DFL;
 	SIGINT_action.sa_handler = SIG_IGN;
 	sigfillset(&SIGINT_action.sa_mask);
 	SIGINT_action.sa_flags = SA_RESTART;
 	sigaction(SIGINT, &SIGINT_action, NULL);
+
+	// https://stackoverflow.com/questions/5288910/sigprocmask-blocking-signals-in-unix
+	sigset_t signal_set;
+	sigemptyset(&signal_set);
+	sigaddset(&signal_set, SIGTSTP);
+	sigprocmask(SIG_BLOCK, &signal_set, NULL);
 
 	sigfillset(&SIGTSTP_action.sa_mask);
 	SIGTSTP_action.sa_flags = SA_RESTART;
@@ -647,6 +648,7 @@ int main() {
 	while (continue_sh) {
 		background_check(head);
 		fflush(stdout);
+		sigprocmask(SIG_UNBLOCK, &signal_set, NULL);
 		printf(": ");
 		fflush(stdout);
 		// if fgets is not null
@@ -654,9 +656,11 @@ int main() {
 
 			// if fgets is not a comment (pound sign)
 			if (user_input[0] != pound_sign) {
-				expanded_var = variable_expansion(user_input);
+				variable_expansion(user_input, expanded_var);
 				if (is_var_expansion) {
 					input = process_user_input(expanded_var);
+					is_var_expansion = false;
+
 				}
 				else {
 					input = process_user_input(user_input);
@@ -670,5 +674,7 @@ int main() {
 			continue;
 		}
 	}
+	free(expanded_var);
+	free(head);
 	return 0;
 }
